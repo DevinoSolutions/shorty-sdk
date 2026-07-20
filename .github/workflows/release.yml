@@ -1,0 +1,56 @@
+# npm release for @aishorty/sdk — runs in the PUBLIC mirror repo
+# (DevinoSolutions/shorty-sdk) only; GitHub ignores nested .github dirs in the
+# private monorepo, so this file is inert there and becomes the root workflow
+# after `scripts/sdk/sync-mirror.mjs` copies the package to the mirror.
+#
+# Publish flow (Changesets governs the version): `changeset version` is run and
+# reviewed in the PRIVATE monorepo (packages/sdk), the bump lands here via the
+# mirror sync, and this workflow publishes when package.json is ahead of npm.
+# Provenance requires a PUBLIC source repo — that is WHY publishing lives here.
+#
+# Auth: npm Trusted Publishing (OIDC) once configured on npmjs.com for this
+# repo+workflow; the NPM_TOKEN secret is the fallback (an unset secret resolves
+# to an empty string and npm then relies on OIDC).
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # sigstore provenance + npm trusted publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: pnpm install --frozen-lockfile
+
+      # prepublishOnly (typecheck + unit tests + build) runs inside `npm
+      # publish`, so a red suite blocks the release without a separate job.
+      - name: Publish when package.json is ahead of npm
+        run: |
+          LOCAL=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view @aishorty/sdk version 2>/dev/null || echo "none")
+          echo "local=$LOCAL published=$PUBLISHED"
+          if [ "$LOCAL" = "$PUBLISHED" ]; then
+            echo "Version $LOCAL already on npm — nothing to publish."
+            exit 0
+          fi
+          npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
