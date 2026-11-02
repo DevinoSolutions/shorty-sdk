@@ -8,9 +8,11 @@
 # mirror sync, and this workflow publishes when package.json is ahead of npm.
 # Provenance requires a PUBLIC source repo — that is WHY publishing lives here.
 #
-# Auth: npm Trusted Publishing (OIDC) once configured on npmjs.com for this
-# repo+workflow; the NPM_TOKEN secret is the fallback (an unset secret resolves
-# to an empty string and npm then relies on OIDC).
+# Auth: npm Trusted Publishing (OIDC) only — registered on npmjs.com
+# 2026-11-02 for DevinoSolutions/shorty-sdk + release.yml (npm matches the
+# workflow filename exactly, so do not rename this file). No NPM_TOKEN secret
+# is used. OIDC needs a GitHub-hosted runner, `id-token: write`, and
+# npm >= 11.5.1.
 name: release
 
 on:
@@ -40,6 +42,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Trusted publishing requires npm >= 11.5.1; setup-node's bundled npm
+      # may be older.
+      - run: npm install -g npm@latest
+
       # prepublishOnly (typecheck + unit tests + build) runs inside `npm
       # publish`, so a red suite blocks the release without a separate job.
       - name: Publish when package.json is ahead of npm
@@ -52,5 +58,3 @@ jobs:
             exit 0
           fi
           npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
